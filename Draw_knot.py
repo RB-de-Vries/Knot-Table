@@ -4,21 +4,26 @@ from copy import deepcopy
 import numpy
 import ast
 
-from Data_edges import apply_R3
+from Data_edges import mix_reduced_dict_load
 
-# BUG: A knot where R1 can be applied may not resolve the frame, causing infinite drawing.
+knot_list = []
 
-# knot_list = []
-# file = open(f"10.pass_reduced/{8}.txt", "r")
+# i = 10
+# file = open(f"8.pass_reduced/{i}.txt", "r")
 # for line in file:
 #     knot = ast.literal_eval(line)
 #     knot_list.append(knot)
-    
 
-knot_list = [
-    [[1, 5, 2, 4], [3, 11, 4, 10], [5, 13, 6, 12], [7, 1, 8, 14], [9, 3, 10, 2], [11, 9, 12, 8], [13, 7, 14, 6]],
-[[1, 5, 2, 4], [3, 11, 4, 10], [5, 1, 6, 14], [7, 13, 8, 12], [9, 3, 10, 2], [11, 7, 12, 6], [13, 9, 14, 8]]
-    ]
+i = 10
+knot_dict = mix_reduced_dict_load(i)
+for _, value in knot_dict.items():
+    knot_list.append(value[0])
+
+show_numbers = True
+
+pos, size = (0,0)
+max_front_number = 0
+max_front_size = 0
 
 # pygame setup
 pygame.init()
@@ -35,17 +40,27 @@ font = pygame.font.Font(None, 36)
 margin_left = 25
 spacing = 75
 
+# Knot --> image
+def Capture(display,name,pos,size): # (pygame Surface, String, tuple, tuple)
+    image = pygame.Surface(size)  # Create image surface
+    image.blit(display,(0,0),(pos,size))  # Blit portion of the display to the image
+    pygame.image.save(image,name)  # Save the image to the disk
 
-def draw_semicircle(p1, p2, direction, gap = "no"): # direction = "left" or "right"
+# Draw a semi-circle (with gap)
+def draw_semicircle(p1, p2, direction, gap = "no"):
+    # unpack Coordinates
     x1, y1 = p1
     _, y2 = p2
+    # Find midpoint and radius
     mid_y = (y1 + y2) / 2
     radius = abs(y2 - y1) / 2
     rect = pygame.Rect(x1 - radius, mid_y - radius, radius*2, radius*2)
     start_angle = radians(90)
     end_angle = radians(270)
+    # Switch the start and endpoint if we want the semicircle on the right side
     if direction == "right":
         start_angle, end_angle = end_angle, start_angle
+    # Place a gap given an angle if needed
     if gap == "no":
         pygame.draw.arc(screen, "black", rect, start_angle, end_angle, 4)
     else:
@@ -53,16 +68,21 @@ def draw_semicircle(p1, p2, direction, gap = "no"): # direction = "left" or "rig
         pygame.draw.arc(screen, "black", rect, start_angle, gap - gap_size, 4)
         pygame.draw.arc(screen, "black", rect, gap + gap_size, end_angle, 4)
 
+# Draw an ellipse (with gap)
 def draw_ellips(p1, p2, direction, gap = "no"):
+    # unpack Coordinates
     x1, y1 = p1
     _, y2 = p2
+    # Find midpoint and radius
     mid_y = (y1 + y2) / 2
     radius = abs(y2 - y1) / 2
     rect = pygame.Rect(x1 - (radius/2), mid_y - radius, radius, radius*2)
     start_angle = radians(90)
     end_angle = radians(270)
+    # Switch the start and endpoint if we want the semicircle on the right side
     if direction == "right":
         start_angle, end_angle = end_angle, start_angle
+    # Place a gap given an angle if needed
     if gap == "no":
         pygame.draw.arc(screen, "black", rect, start_angle, end_angle, 4)
     else:
@@ -70,10 +90,12 @@ def draw_ellips(p1, p2, direction, gap = "no"):
         pygame.draw.arc(screen, "black", rect, start_angle, gap - gap_size, 4)
         pygame.draw.arc(screen, "black", rect, gap + gap_size, end_angle, 4)
 
-def draw_0_4(p1, p2, p3, p4, sign): #
+# Draws the starting piece
+def draw_0_4(p1, p2, p3, p4, sign):
     draw_semicircle(p1, p3, "left", gap = radians(150))
     draw_semicircle(p2, p4, "left")
 
+# Draws a cross
 def draw_cross(p1, p2, p3, p4):
     middle = tuple(numpy.divide(numpy.add(p1, p3),(2,2)))
     gapsize = tuple(numpy.divide(numpy.subtract(p3, p1), (10,10)))
@@ -81,11 +103,12 @@ def draw_cross(p1, p2, p3, p4):
     pygame.draw.line(screen, "black", tuple(numpy.add(middle, gapsize)), p3, 4)
     pygame.draw.line(screen, "black", p2, p4, 4)
 
+# Draws a fork
 def draw_fork(p1,p2,p3,p4, gap):
+    # The gap can eiher be part of the line or the ellipse
     if gap == "line":
         middle = tuple(numpy.divide(numpy.add(p1, p3),(2,2)))
         gapsize = tuple(numpy.divide(numpy.subtract(p3, p1), (10,10)))
-        # pygame.draw.line(screen, "black", p1, tuple(numpy.subtract(middle, gapsize)), 4)
         pygame.draw.line(screen, "black", p1, tuple(numpy.subtract(middle, gapsize)), 4)
         pygame.draw.line(screen, "black", tuple(numpy.add(middle, gapsize)), p3, 4)
         draw_ellips(p2,p4, "left")
@@ -93,6 +116,7 @@ def draw_fork(p1,p2,p3,p4, gap):
         pygame.draw.line(screen, "black", p1, p3, 4)
         draw_ellips(p2,p4, "left", radians(180))
 
+# Front --> screen Coordinates
 def update_point_list(len_front, front_number):
     startheight = 0
     if len_front%2: # odd
@@ -102,6 +126,7 @@ def update_point_list(len_front, front_number):
     points = [(margin_left+ spacing*front_number, startheight - i*spacing) for i in range(len_front)]
     return points
 
+# Draws the knot
 def draw_knot(knot):
     current_crossing = knot[0]
     front = current_crossing
@@ -112,21 +137,25 @@ def draw_knot(knot):
     points = update_point_list(len(front), front_number)
 
     draw_0_4(points[0], points[1], points[2], points[3], "+")
-    for idx, point in enumerate(points):
-            text_surface = font.render(str(front[idx]), True, "black")
-            screen.blit(text_surface, (point[0] - 10, point[1] - 30))
+    if show_numbers:
+        for idx, point in enumerate(points):
+                text_surface = font.render(str(front[idx]), True, "black")
+                screen.blit(text_surface, (point[0] - 10, point[1] - 30))
     
     next_front = front
     next_points = points
     while len(front) != 0:
-        # print(front)
-
         draw_list = []
         skip_next = False
         front_number += 1
         points = next_points
         front = next_front
         len_front = len(front)
+        global max_front_size, max_front_number
+        if len_front > max_front_size:
+            max_front_size = len_front
+        if front_number > max_front_number:
+            max_front_number = front_number
 
         # create front and lists what to draw
         for i in range(len_front):
@@ -135,34 +164,27 @@ def draw_knot(knot):
                 continue
             
             if i < len(front) - 1:
+                # can we place a cap?
                 if front[i] == front[i+1]:
-                    # semi
-                    # next_points = update_point_list(len(next_front), front_number)
+                    
                     draw_list.append("cap")
-                    #draw_semicircle(points[i], points[i+1], "right")
                     skip_next = True
                     next_front.pop(i)
                     next_front.pop(i)
                     continue
-
+                
+                # If there are no crossings left to place, we can only place a cap or a line
                 if len(knot) == 0:   
-                    # next_points = update_point_list(len(next_front), front_number)
-                    # draw a line
                     draw_list.append("line")
-                    # pygame.draw.line(screen,"black", points[i], next_points[i+front_offset], 4)
                     continue
                 
                 found = False
                 for crossing in knot:
                     # find other half edge
                     if front[i] in crossing:
-                        # bi-gon/cross
+                        # place the cross
                         found = True
-                
                         if front[i+1] in crossing:
-                            # update front
-                            #print(front)
-
                             idx_i = crossing.index(front[i])
                             idx_i2 = crossing.index(front[i+1])
                             if idx_i +1 != idx_i2:
@@ -171,35 +193,28 @@ def draw_knot(knot):
                             else:
                                 next_front[i] = crossing[(idx_i-1)%4]
                                 next_front[i+1] = crossing[(idx_i2+1)%4]
-                            #print(front)
-
-                            # next_points = update_point_list(len(next_front), front_number)
-
-                            # make a cross
+                        
                             if crossing[0] == next_front[i] or crossing[2] == next_front[i]:
                                 draw_list.append("cross_under")
                             else:
                                 draw_list.append("cross_over")
-                            # draw_cross(points[i], points[i+1], next_points[i+1], next_points[i])
+    
                             skip_next = True
                             knot.remove(crossing)
                             break
+                        # if a crossing can be placed, but not a cross
                         else:
-                            # next_points = update_point_list(len(next_front), front_number)
-                            # draw a line
-                            # pygame.draw.line(screen,"black", points[i], next_points[i], 4)
                             draw_list.append("line")
                             break
+                # if no crossings can be placed
                 if not found:
                     draw_list.append("line")
                     continue
-
+            # At the end of the front, only a line can be drawn
             else:
-                # next_points = update_point_list(len(next_front), front_number)
-                # draw a line
                 draw_list.append("line")
-                # pygame.draw.line(screen,"black", points[i], next_points[i+front_offset], 4)
-        
+                
+        # If we can only draw lines with the rules above, we need to place a fork
         if len(set(draw_list)) == 1 and draw_list[0] == "line":
             done = False
             for i in range(len(front)):
@@ -222,12 +237,12 @@ def draw_knot(knot):
                         done = True
                         break
 
-
         # draw front labels
         next_points = update_point_list(len(next_front), front_number)
-        for idx, point in enumerate(next_points):
-            text_surface = font.render(str(next_front[idx]), True, "black")
-            screen.blit(text_surface, (point[0] - 10, point[1] - 30))
+        if show_numbers:
+            for idx, point in enumerate(next_points):
+                text_surface = font.render(str(next_front[idx]), True, "black")
+                screen.blit(text_surface, (point[0] - 10, point[1] - 30))
 
         # draw from list
         i = 0
@@ -273,12 +288,22 @@ while running:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_LEFT:
                 knot_number = (knot_number - 1)%len(knot_list)
+                max_front_number = 0
+                max_front_size = 0
             elif event.key == pygame.K_RIGHT:
                 knot_number = (knot_number + 1)%len(knot_list)
+                max_front_number = 0
+                max_front_size = 0
+            elif event.key == pygame.K_p:
+                pos = (0, HEIGHT/2 - floor(max_front_size/2)*spacing + 10)
+                size = (margin_left+ spacing*max_front_number - 15,max_front_size*spacing - 25)
+                Capture(screen,f"Knot_figures/{i}/{i}_{knot_number + 1}.png",pos,size)
+
     
     screen.fill("white")
 
-    # Draw images with numbers    
+
+    # Draw images with numbers  
     title_text = {"x": 0, "y": 0, "text": f"{knot_number + 1}, {knot_list[knot_number]}"}
     text_surface = font.render(title_text["text"], True, text_color)
     screen.blit(text_surface, (title_text["x"], title_text["y"]))
